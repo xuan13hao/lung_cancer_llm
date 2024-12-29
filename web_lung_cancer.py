@@ -2,7 +2,7 @@ import streamlit as st
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, GenerationConfig
 
-# Streamlit page configuration
+
 st.set_page_config(page_title="AI System Interactive Chat", layout="wide")
 
 @st.cache_resource
@@ -16,27 +16,27 @@ def load_model_and_tokenizer(model_path):
     )
     tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
 
-    # Add pad token if not defined
+
     if tokenizer.pad_token is None:
         tokenizer.add_special_tokens({'pad_token': '[PAD]'})
         model.resize_token_embeddings(len(tokenizer), mean_resizing=False)
 
-    # model.to("cuda")  # Ensure model is fully on CUDA
-    model.eval()  # Set model to evaluation mode
+
+    model.eval()  
     return model, tokenizer
 
 @torch.inference_mode()
 def generate_response(model, tokenizer, prompt, generation_config):
-    # Tokenize the input with padding and return tensors
+
     inputs = tokenizer(
         prompt,
         return_tensors="pt",
         padding=True,
         truncation=True,
-        max_length=1024  # Adjust max_length based on your use case
+        max_length=1024  
     ).to("cuda")
 
-    # Use pad_token_id explicitly
+
     pad_token_id = tokenizer.pad_token_id
     outputs = model.generate(
         inputs.input_ids,
@@ -46,14 +46,14 @@ def generate_response(model, tokenizer, prompt, generation_config):
         temperature=generation_config.temperature,
         repetition_penalty=generation_config.repetition_penalty,
         do_sample=generation_config.do_sample,
-        pad_token_id=pad_token_id  # Set pad_token_id to avoid warnings
+        pad_token_id=pad_token_id  
     )
     response = tokenizer.decode(outputs[0], skip_special_tokens=True)
     return response
 
 
 
-# Sidebar configuration for generation settings
+
 def configure_generation_settings():
     with st.sidebar:
         st.title("Generation Settings")
@@ -69,12 +69,12 @@ def configure_generation_settings():
             do_sample=True
         )
 
-# Main function to run the app
+
 def main():
     st.title("AI System Interactive Chat")
 
-    # Path to the locally stored model
-    model_path = "/home/xuan/llama3.2-8b-train-py"  # Path to your local model
+
+    model_path = "/home/xuan/llama3.2-8b-train-py"  
     st.sidebar.title("Model Settings")
     st.sidebar.text(f"Model: {model_path}")
 

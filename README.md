@@ -20,5 +20,5 @@ pip install numpy
 ### Usage
 To run the drug repurposing model, execute the following command:
 ```bash
-streamlit run web_streamlit_for_instruct.py /home/xuan/Llama-3.1-8B
+streamlit run web_lung_cancer.py
 ```
