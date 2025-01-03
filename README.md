@@ -20,5 +20,6 @@ pip install numpy
 ### Usage
 To run the drug repurposing model, execute the following command:
 ```bash
+conda activate /home/h392x566/xuan_conda
 streamlit run web_lung_cancer.py
 ```

@@ -3,7 +3,7 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, GenerationConfig
 
 
-st.set_page_config(page_title="AI System Interactive Chat", layout="wide")
+st.set_page_config(page_title="Lung Cancer AI System", layout="wide")
 
 @st.cache_resource
 def load_model_and_tokenizer(model_path):
@@ -68,13 +68,10 @@ def configure_generation_settings():
             repetition_penalty=repetition_penalty,
             do_sample=True
         )
-
-
 def main():
-    st.title("AI System Interactive Chat")
+    st.title("Lung Cancer AI System")
 
-
-    model_path = "/home/xuan/llama3.2-8b-train-py"  
+    model_path = "/home/h392x566/llama3.2-8b-train-py"  
     st.sidebar.title("Model Settings")
     st.sidebar.text(f"Model: {model_path}")
 
@@ -95,14 +92,62 @@ def main():
         with st.chat_message("user"):
             st.markdown(prompt)
 
+        # Add preamble/instruction to the prompt
+        preamble = (
+            "I am a helpful AI Lung Cancer Oncology Assistant. "
+            "Provide one answer ONLY to the following query based on the context provided below. "
+            "Do not generate or answer any other questions. "
+            "Do not make up or infer any information that is not directly stated in the context. "
+            "Provide a concise answer."
+        )
+        full_prompt = f"{preamble}\n\nQuery: {prompt}"
+
         # Generate response
         with st.chat_message("assistant"):
             response_placeholder = st.empty()
             response_placeholder.markdown("Thinking...")
-            response = generate_response(model, tokenizer, prompt, generation_config)
+            response = generate_response(model, tokenizer, full_prompt, generation_config)
             response_placeholder.markdown(response)
 
         st.session_state.chat_history.append({"role": "assistant", "content": response})
 
 if __name__ == "__main__":
     main()
+
+
+# def main():
+#     st.title("Lung Cancer AI System")
+
+
+#     model_path = "/home/h392x566/llama3.2-8b-train-py"  
+#     st.sidebar.title("Model Settings")
+#     st.sidebar.text(f"Model: {model_path}")
+
+#     model, tokenizer = load_model_and_tokenizer(model_path)
+#     generation_config = configure_generation_settings()
+
+#     if "chat_history" not in st.session_state:
+#         st.session_state.chat_history = []
+
+#     # Display chat history
+#     for message in st.session_state.chat_history:
+#         with st.chat_message(message["role"]):
+#             st.markdown(message["content"])
+
+#     # User input
+#     if prompt := st.chat_input("Enter your query:"):
+#         st.session_state.chat_history.append({"role": "user", "content": prompt})
+#         with st.chat_message("user"):
+#             st.markdown(prompt)
+
+#         # Generate response
+#         with st.chat_message("assistant"):
+#             response_placeholder = st.empty()
+#             response_placeholder.markdown("Thinking...")
+#             response = generate_response(model, tokenizer, prompt, generation_config)
+#             response_placeholder.markdown(response)
+
+#         st.session_state.chat_history.append({"role": "assistant", "content": response})
+
+# if __name__ == "__main__":
+#     main()

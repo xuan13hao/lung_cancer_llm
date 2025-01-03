@@ -1,141 +1,104 @@
 import streamlit as st
-import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM, GenerationConfig
-from langchain.document_loaders import PyPDFLoader
-from langchain.vectorstores import Chroma
-from langchain.text_splitter import CharacterTextSplitter
-from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.chains import RetrievalQA
+from PyPDF2 import PdfReader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+import os
+from dotenv import load_dotenv
+from langchain.vectorstores import FAISS
+from langchain.llms import HuggingFacePipeline
 from langchain.prompts import PromptTemplate
+from langchain.chains.question_answering import load_qa_chain
+from langchain.embeddings import HuggingFaceEmbeddings
+from transformers import pipeline
 
+# Load Llama Model
+def load_llama_model():
+    model_path = "/home/h392x566/llama3.2-8b-train-py"
+    return pipeline("text-generation", model=model_path, device=0)  # Use GPU if available
 
-st.set_page_config(page_title="AI System with RAG", layout="wide")
+# Extract text from PDFs
+def get_pdf_text(pdf_docs):
+    text = ""
+    for pdf in pdf_docs:
+        pdf_reader = PdfReader(pdf)
+        for page in pdf_reader.pages:
+            text += page.extract_text()
+    return text
 
-@st.cache_resource
-def load_model_and_tokenizer(model_path):
-    model = AutoModelForCausalLM.from_pretrained(
-        model_path,
-        device_map="auto",
-        torch_dtype=torch.float16,
-        trust_remote_code=True,
-        low_cpu_mem_usage=True
-    )
-    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+# Split text into chunks
+def get_text_chunks(text):
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    chunks = text_splitter.split_text(text)
+    return chunks
 
-    if tokenizer.pad_token is None:
-        tokenizer.add_special_tokens({'pad_token': '[PAD]'})
-        model.resize_token_embeddings(len(tokenizer))
+# Create Vector Store
+def get_vector_store(text_chunks):
+    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
+    vector_store.save_local("faiss_index")
 
-    model.eval()
-    return model, tokenizer
-
-@st.cache_resource
-def create_vector_store(pdf_path):
-    loader = PyPDFLoader(pdf_path)
-    documents = loader.load()
-
-    text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-    texts = text_splitter.split_documents(documents)
-
-    embeddings = HuggingFaceEmbeddings()
-    vector_store = Chroma.from_documents(texts, embedding=embeddings, persist_directory="chromadb")
-    vector_store.persist()
-
+# Load Vector Store
+def load_vector_store():
+    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    vector_store = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
     return vector_store
 
-@torch.inference_mode()
-def generate_response(model, tokenizer, prompt, generation_config):
-    inputs = tokenizer(
-        prompt,
-        return_tensors="pt",
-        padding=True,
-        truncation=True,
-        max_length=1024
-    ).to("cuda")
+# Create Conversational Chain
+def get_conversational_chain():
+    prompt_template = """
+    Answer the question as detailed as possible from the provided context. 
+    If the answer is not in the provided context, say "answer is not available in the context."
+    Do not provide a wrong answer.
 
-    pad_token_id = tokenizer.pad_token_id
-    outputs = model.generate(
-        inputs.input_ids,
-        attention_mask=inputs.attention_mask,
-        max_new_tokens=generation_config.max_new_tokens,
-        top_p=generation_config.top_p,
-        temperature=generation_config.temperature,
-        repetition_penalty=generation_config.repetition_penalty,
-        do_sample=generation_config.do_sample,
-        pad_token_id=pad_token_id
-    )
-    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    return response
+    Context:
+    {context}
 
-def configure_generation_settings():
-    with st.sidebar:
-        st.title("Generation Settings")
-        max_new_tokens = st.slider("Max New Tokens", 50, 1000, 150, step=10)
-        top_p = st.slider("Top P", 0.0, 1.0, 0.9, step=0.01)
-        temperature = st.slider("Temperature", 0.0, 2.0, 1.0, step=0.1)
-        repetition_penalty = st.slider("Repetition Penalty", 1.0, 2.0, 1.1, step=0.1)
-        return GenerationConfig(
-            max_new_tokens=max_new_tokens,
-            top_p=top_p,
-            temperature=temperature,
-            repetition_penalty=repetition_penalty,
-            do_sample=True
-        )
+    Question:
+    {question}
 
+    Answer:
+    """
+    prompt = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
+    model = HuggingFacePipeline(pipeline=load_llama_model())
+    chain = load_qa_chain(model, chain_type="stuff", prompt=prompt)
+    return chain
+
+# Handle User Questions
+def user_input(user_question):
+    vector_store = load_vector_store()
+    docs = vector_store.similarity_search(user_question)
+    chain = get_conversational_chain()
+    response = chain({"input_documents": docs, "question": user_question}, return_only_outputs=True)
+    st.write("Reply: ", response["output_text"])
+
+# Main Application
 def main():
-    st.title("AI System with Retrieval-Augmented Generation (RAG)")
+    st.set_page_config("AI Lung Cancer Oncology Assistant", page_icon=":scroll:")
+    st.header("AI Lung Cancer RAG Oncology Assistant 🤖")
 
-    model_path = "/home/xuan/llama3.2-8b-train-py"
-    pdf_path = st.sidebar.file_uploader("Upload PDF for Knowledge Base", type="pdf")
+    user_question = st.text_input("Ask a Question from the PDF Files uploaded .. ✍️📝")
 
-    st.sidebar.title("Model Settings")
-    st.sidebar.text(f"Model: {model_path}")
+    if user_question:
+        user_input(user_question)
 
-    model, tokenizer = load_model_and_tokenizer(model_path)
-    generation_config = configure_generation_settings()
+    with st.sidebar:
+        st.write("---")
+        st.title("📁 PDF File's Section")
+        pdf_docs = st.file_uploader("Upload your PDF Files & \n Click on the Submit & Process Button", accept_multiple_files=True)
+        if st.button("Submit & Process"):
+            with st.spinner("Processing..."):
+                raw_text = get_pdf_text(pdf_docs)
+                text_chunks = get_text_chunks(raw_text)
+                get_vector_store(text_chunks)
+                st.success("Done")
 
-    if pdf_path:
-        vector_store = create_vector_store(pdf_path)
-        retriever = vector_store.as_retriever()
-        qa_chain = RetrievalQA.from_chain_type(
-            llm=model,
-            retriever=retriever,
-            return_source_documents=True,
-            chain_type_kwargs={
-                "prompt": PromptTemplate(
-                    input_variables=["context", "question"],
-                    template="Answer the question based on the context: {context}\nQuestion: {question}\nAnswer:"
-                )
-            }
-        )
-
-        if "chat_history" not in st.session_state:
-            st.session_state.chat_history = []
-
-        for message in st.session_state.chat_history:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
-
-        if prompt := st.chat_input("Enter your query:"):
-            st.session_state.chat_history.append({"role": "user", "content": prompt})
-            with st.chat_message("user"):
-                st.markdown(prompt)
-
-            with st.chat_message("assistant"):
-                response_placeholder = st.empty()
-                response_placeholder.markdown("Thinking...")
-
-                result = qa_chain({"question": prompt})
-                response = result["answer"]
-                sources = result["source_documents"]
-
-                response_placeholder.markdown(response)
-                if sources:
-                    st.markdown("### Sources:")
-                    for source in sources:
-                        st.markdown(f"- {source.metadata['source']}")
-
-            st.session_state.chat_history.append({"role": "assistant", "content": response})
+    st.markdown(
+        """
+        <div style="position: fixed; bottom: 0; left: 0; width: 100%; background-color: #0E1117; padding: 15px; text-align: center;">
+            © <a href="https://github.com/xuan13hao" target="_blank">Hao Xuan</a>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 if __name__ == "__main__":
     main()
