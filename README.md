@@ -1,4 +1,4 @@
-# Drug Repurposing Using Llama LLM Model
+# Llama LLM model AI-Chat from the local unsloth fine-tuning model
 
 ## Project Overview
 Llama LLM model AI-Chat from the local unsloth fine-tuning model
